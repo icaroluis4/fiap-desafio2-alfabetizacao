@@ -1,0 +1,35 @@
+# Dados brutos
+*.csv
+*.xlsx
+*.parquet
+*.zip
+microdados_*/
+converted_csv/
+
+# Credenciais e ambiente
+.env
+credentials.json
+service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
