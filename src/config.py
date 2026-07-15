@@ -22,6 +22,15 @@ BQ_DATASET_SILVER: str = os.getenv("BQ_DATASET_SILVER", "silver_alfabetizacao")
 BQ_DATASET_GOLD: str = os.getenv("BQ_DATASET_GOLD", "gold_alfabetizacao")
 
 # ---------------------------------------------------------------------------
+# Streaming (Pub/Sub)
+# ---------------------------------------------------------------------------
+PUBSUB_TOPIC_ID: str = os.getenv("PUBSUB_TOPIC_ID", "alfabetizacao-eventos")
+PUBSUB_SUBSCRIPTION_ID: str = os.getenv(
+    "PUBSUB_SUBSCRIPTION_ID", "alfabetizacao-eventos-sub"
+)
+BQ_TABLE_STREAMING: str = os.getenv("BQ_TABLE_STREAMING", "eventos_streaming")
+
+# ---------------------------------------------------------------------------
 # Caminhos locais
 # ---------------------------------------------------------------------------
 REPO_ROOT = Path(__file__).resolve().parent.parent
