@@ -233,17 +233,74 @@ A Gold foi desenhada para ser a base dessas aplicações, sem acoplar ML ao MVP 
 
 ---
 
-## 5. Limitações conscientes
+## 5. FinOps — decisões de custo (específicas deste projeto)
+
+FinOps, neste repositório, significa **amarrar arquitetura a custo real do recorte educacional no GCP**, não listar boas práticas genéricas.
+
+### 5.1 O que custa de fato no nosso desenho
+
+| Camada / serviço | Volume / padrão | Papel no custo |
+|------------------|-----------------|----------------|
+| GCS | CSVs de AEEB, Metas e Censo no bucket Bronze | Storage barato do bruto; landing reutilizável |
+| BQ Bronze | Inclui `aeeb_ts_aluno` (~2,2M linhas) + demais raw | Custo de **preservar** histórico, não de consultar sempre |
+| BQ Silver | Censo com subset de colunas; AEEB/Metas tipados | Reduz largura e ruído antes da integração |
+| BQ Gold | `indicador_municipio` (~5,5k), `metas_vs_resultados`, `indicador_uf` (27) | Custo de **análise** fica em tabelas pequenas |
+| Pub/Sub | Demo de eventos (ordem de dezenas) | Prova híbrida sem pipeline streaming contínua |
+| Execução | Python local + jobs BQ sob demanda | Sem cluster/VM/Composer ocioso |
+
+### 5.2 Alavancas usadas (decisão → efeito)
+
+1. **Gold em grão município/UF**  
+   Efeito: perguntas de meta/gap não varrem microdado aluno.
+
+2. **TS_ALUNO fora da Silver/Gold do MVP**  
+   Efeito: 2,2M linhas ficam disponíveis para reprocesso, mas fora do caminho quente de análise.
+
+3. **Subset do Censo (em vez de 426 colunas)**  
+   Efeito: menos bytes em `CREATE TABLE` Silver e em joins da Gold.
+
+4. **Análise e qualidade sobre Silver/Gold**  
+   Efeito: checks de nulos/duplicidade/joins não precisam full-scan da Bronze larga como hábito.
+
+5. **Streaming sob demanda**  
+   Efeito: Pub/Sub existe e foi exercitado; não há consumidor 24/7 gerando custo fixo.
+
+6. **Sem orquestrador gerenciado no MVP**  
+   Efeito: evita custo base de Composer antes de haver janela de execução produtiva e ownership.
+
+7. **Separação lake (GCS) × warehouse (BQ)**  
+   Efeito: bruto barato no Storage; SQL analítico no BQ só quando necessário.
+
+### 5.3 Trade-off custo × capacidade (honesto)
+
+| Se tivéssemos priorizado… | Custo / complexidade | O que ganharia | Por que não no MVP |
+|---------------------------|----------------------|----------------|--------------------|
+| Gold no grão aluno | Alto scan/storage | Análise individual | Fora do grão das metas do challenge |
+| Dataflow streaming contínuo | Custo fixo + ops | Near real-time “de verdade” | Fontes educacionais são majoritariamente batch |
+| Composer/Airflow gerenciado | Custo base mensal | Schedule/retry/SLA | Scripts bastam para reprodutibilidade acadêmica |
+| Manter 426 colunas do Censo na Silver | Queries mais caras/largas | Flexibilidade exploratória | Poucas colunas explicam o caso de alfabetização |
+
+### 5.4 Regra operacional de FinOps da equipe
+
+- **Bronze** = auditoria e reprocessamento  
+- **Silver** = contrato limpo entre fontes  
+- **Gold** = única camada “barata e estável” para pergunta de negócio, dashboard e IA  
+
+Qualquer feature nova deve responder: *isso aumenta scan da Bronze ou da Gold?* Se aumentar a Bronze por hábito de consulta, está errado o desenho de consumo.
+
+---
+
+## 6. Limitações conscientes
 
 1. Streaming demonstrável, não operacional contínuo.  
 2. Sem camada de monitoramento avançado (alertas/SLA) neste momento.  
 3. Sem particionamento/clustering fino exaustivo em todas as tabelas.  
-4. FinOps será detalhado em discussão/documentação específica (fora do escopo deste documento por enquanto).  
-5. Diagrama visual final e prints de console complementam este texto em `docs/diagramas/` e `docs/evidencias/`.
+4. Estimativa financeira em R$ depende do billing account e do uso futuro; o controle aqui é por **arquitetura e volume**, não por planilha contábil do free tier.  
+5. Diagrama e prints de console complementam este texto em `docs/diagramas/` e `docs/evidencias/`.
 
 ---
 
-## 6. Mapa rápido: decisão → artefato no repositório
+## 7. Mapa rápido: decisão → artefato no repositório
 
 | Decisão | Artefato |
 |---------|----------|
@@ -258,7 +315,7 @@ A Gold foi desenhada para ser a base dessas aplicações, sem acoplar ML ao MVP 
 
 ---
 
-## 7. Conclusão
+## 8. Conclusão
 
 A arquitetura escolhida privilegia:
 

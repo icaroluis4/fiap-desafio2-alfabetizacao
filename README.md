@@ -194,10 +194,69 @@ Esses usos não fazem parte do MVP de engenharia, mas orientam o desenho da Gold
 
 ---
 
-## 11. FinOps
+## 11. FinOps — decisões de custo desta pipeline
 
-A arquitetura considera eficiência de custo no GCP (volume controlado, camadas com responsabilidades distintas e consultas analíticas na Gold).  
-O detalhamento de FinOps será aprofundado em documentação específica.
+O FinOps aqui não é checklist genérico: são **escolhas concretas** tomadas no desenho e na implementação, com impacto mensurável no volume processado e no padrão de consulta.
+
+### 11.1 Perfil de custo do MVP
+
+| Componente | O que existe no projeto | Implicação de custo |
+|------------|-------------------------|---------------------|
+| GCS (landing) | Bucket `fiap-desafio2-bronze-alfabetizacao` com CSVs brutos | Storage barato do bruto; evita reupload a cada transformação |
+| BigQuery Bronze | ~10 tabelas raw (inclui `aeeb_ts_aluno` com **2,2M** linhas) | Histórico preservado, mas **não** é a camada de consulta analítica |
+| BigQuery Silver | Subset limpo (ex.: Censo com colunas selecionadas, não 426) | Menos bytes lidos em transformações e auditorias |
+| BigQuery Gold | 3 tabelas enxutas (`indicador_municipio` ~5,5k; `indicador_uf` 27) | Consultas de negócio varrem **milhares**, não milhões de linhas |
+| Pub/Sub | Tópico + subscription de demo (dezenas de eventos) | Streaming demonstrável sem fila/consumo contínuo 24/7 |
+| Compute | Scripts Python locais + jobs BQ sob demanda | Sem cluster sempre ligado (Dataproc/Composer/VMs ociosas) |
+
+Ordem de grandeza de storage do recorte trabalhado: **centenas de MB** (não dezenas de GB). Isso cabe com folga no free tier típico de storage do BQ/GCS para o volume acadêmico — o ponto FinOps não é “é de graça”, é **não crescer custo sem necessidade**.
+
+### 11.2 Decisões que reduzem custo (e o que foi evitado)
+
+1. **Consultar Gold/Silver, não a Bronze crua**  
+   A Bronze guarda fidelidade (incluindo microdado aluno). Análises e validações de negócio rodam sobre Silver/Gold.  
+   **Evitado:** dashboard ou notebook varrendo `aeeb_ts_aluno` (2,2M) a cada pergunta.
+
+2. **Grão municipal na Gold, não aluno**  
+   O indicador e as metas de política pública são municipais/estaduais.  
+   **Evitado:** materializar Gold em grão aluno/escola sem demanda do MVP (explodiria storage e scan).
+
+3. **Subset do Censo na Silver**  
+   Do arquivo com centenas de colunas, a Silver mantém identificação, dependência, matrículas de anos iniciais e flags de infraestrutura relevantes.  
+   **Evitado:** `SELECT *` do Censo em toda transformação.
+
+4. **Landing no GCS + load controlado no BQ**  
+   Bruto fica no Storage; o BQ recebe cargas sob demanda via scripts.  
+   **Evitado:** reprocessar arquivo local gigante a cada experimento sem versionar o landing.
+
+5. **Streaming sob demanda, não consumidor sempre ativo**  
+   Pub/Sub + pull/insert demonstram o padrão híbrido; não há worker 24/7 nem Dataflow contínuo.  
+   **Evitado:** custo fixo de streaming ocioso só para “ter streaming”.
+
+6. **Sem orquestrador gerenciado no MVP**  
+   Fluxo por scripts versionados.  
+   **Evitado:** Cloud Composer/Airflow gerenciado (custo base relevante) antes de haver SLA de produção.
+
+7. **Qualidade com checks pontuais no BQ**  
+   `validacoes.py` executa contagens/agregações objetivas e gera evidência.  
+   **Evitado:** ferramentas caras de observability só para o escopo acadêmico.
+
+### 11.3 Onde o custo ainda pode subir (e como controlamos)
+
+| Risco | Como aparece | Controle adotado / recomendado |
+|-------|--------------|--------------------------------|
+| Scan acidental da Bronze | Query exploratória em tabela raw larga | Disciplina de camada: análise na Gold; Bronze só reprocessamento |
+| Reprocessar TS_ALUNO sem necessidade | Reload completo do microdado | Manter aluno na Bronze/GCS; Gold usa agregado municipal |
+| Streaming “sempre ligado” | Subscriber/Dataflow ocioso | Demo sob demanda (`run_streaming_demo.py`) |
+| Crescimento de evidências/logs | Prints e tabelas auxiliares | Evidências no Git; dados de negócio no GCP com datasets separados |
+| Orquestração prematura | Composer “porque é best practice” | Só evoluir quando houver agendamento real e dono operacional |
+
+### 11.4 Princípio FinOps do projeto
+
+> **Pagar por valor analítico, não por volume bruto.**  
+> O bruto (Bronze/GCS) existe para rastreabilidade. O custo recorrente de análise deve cair sobre tabelas pequenas, estáveis e com pergunta de negócio clara (Gold).
+
+Detalhamento das decisões de arquitetura ligadas a isso: [`docs/decisoes_tecnicas.md`](docs/decisoes_tecnicas.md).
 
 ---
 
